@@ -1,0 +1,175 @@
+package mapreduce;
+
+import java.io.IOException;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.NullWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+
+public class Count {
+	/** 自定义日志存储类 */
+	public static class LogParser {
+		// 所需要的信息
+		public String[] parse(String line) throws ParseException {
+			// Ip
+			String ip = getIp(line);
+
+			// Date
+			String date = getDate(line);
+			//Day
+			String day=getDay(line);
+			//Traffic
+			String traffic=getTraffic(line);
+			//Type
+			String type=getType(line);
+			//Type
+			String id=getId(line);
+			return new String[] {ip, date, day, traffic, type,id};
+
+		}
+
+		// 获取ip
+		public String getIp(String line) {
+			//按照‘- -’分割，ip为分割后数组的下标为0所对应的值
+			String ip = line.split(",")[0].trim();
+
+			return ip;
+		}
+
+		//获取访问时间
+		public String getDate(String line) throws ParseException {
+			String line_s = line.split(",")[1];
+			DateFormat df = new SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z",Locale.UK);
+			Date date = df.parse(line_s);
+			SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+			String return_time = dateFormat.format(date);
+			return return_time;
+		}
+		//获取天数
+		public String getDay(String line) {
+			String date[] = line.split(",");
+			return date[2].trim();
+		}
+
+		//获取流量
+		public String getTraffic(String line) {
+			String date[] = line.split(",");
+			return date[3].trim();
+		}
+
+		//获取类型
+		public String getType(String line) {
+			String date[] = line.split(",");
+			return date[4].trim();
+		}
+
+		//获取ID
+		public String getId(String line) {
+			String date[] = line.split(",");
+			return date[5].trim();
+		}		
+	}
+
+	/** 自定义map类 */
+	public static class MyMapper extends Mapper<LongWritable, Text, LongWritable, Text> {
+		// 注入自定义log格式类
+		LogParser logParser = new LogParser();
+		//最终写入时value值
+		Text outputValue = new Text();
+		@Override
+		protected void map(LongWritable key, Text value,
+				Mapper<LongWritable, Text, LongWritable, Text>.Context context)
+						throws IOException, InterruptedException {
+			// TODO Auto-generated method stub
+			//			super.map(key, value, context);
+			if (value.toString().length() >= 11) {
+				//格式化后的日志
+				String[] parsedLog;
+				try {
+					parsedLog = logParser.parse(value.toString());
+					if(parsedLog!=null)
+					{
+						//设置所需要的信息，中间以\t分割
+						//outputValue.set("ip--->"+parsedLog[0] + "\n" +"date--> time:"+ parsedLog[1] + "\n" +"day:"+ parsedLog[2] + "\n" +"traffic:"+ parsedLog[3] + "\n" + "type:"+parsedLog[4]+ "\n" + "id:"+parsedLog[5]+"*****************************************");
+						// 写入数据
+						//context.write(key, outputValue);
+						//设置所需要的信息，中间以\t分割
+						outputValue.set(parsedLog[0] + "\t" + parsedLog[1] + "\t" +parsedLog[2] + "\t" + parsedLog[3] + "\t" +parsedLog[4]+ "\t"+parsedLog[5]);
+						// 写入数据
+						context.write(key, outputValue);
+					}
+				} catch (ParseException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+
+
+			}
+		}
+	}
+
+	/** 自定义reduce类 */
+	public static class MyReducer extends Reducer<LongWritable, Text, Text, NullWritable> {
+		@Override
+		protected void reduce(LongWritable key, Iterable<Text> values,
+				Reducer<LongWritable, Text, Text, NullWritable>.Context context)
+						throws IOException, InterruptedException {
+			// TODO Auto-generated method stub
+			//			super.reduce(arg0, arg1, arg2);
+			// 使用for循环输出
+			for (Text value : values) {
+				//将结果保存为key，value为空
+				context.write(value, NullWritable.get());
+			}
+		}
+	}
+
+	
+
+		/** 主函数 
+		 * @throws Exception 
+		 * */
+		public static void main(String[] args) throws Exception {
+			//文件位置和输出位置
+			String[] paths = new String[2];
+			//文件位置
+			paths[0] = "hdfs://192.168.57.129:9000/mymapreduce/result.txt";
+			//输出位置
+			paths[1] = "hdfs://192.168.57.129:9000/mymapreduce/out1";
+			//paths[1] = "hdfs://192.168.57.129:9000/mymapreduce/out2";
+			//定义job对象
+			Job job = Job.getInstance();
+			//以jar形式运行
+			job.setJarByClass(Count.class);
+			//设置Mapper类
+			job.setMapperClass(MyMapper.class);
+			//设置Reduce类
+			job.setReducerClass(MyReducer.class);
+			//设置输出的键的类型
+			job.setOutputKeyClass(LongWritable.class);
+			//设置输出的值的类型
+			job.setOutputValueClass(Text.class);
+			//设置输入路径
+			FileInputFormat.addInputPath(job, new Path(paths[0]));
+			//设置输出路径
+			FileOutputFormat.setOutputPath(job, new Path(paths[1]));
+			//退出
+			System.exit(job.waitForCompletion(true)?0:1);				
+		}
+	}
