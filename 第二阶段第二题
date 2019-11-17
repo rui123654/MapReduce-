@@ -1,0 +1,130 @@
+package mapreduce;  
+import java.io.IOException;  
+import org.apache.hadoop.fs.Path;  
+import org.apache.hadoop.io.IntWritable;  
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.WritableComparable;
+import org.apache.hadoop.mapreduce.Job;  
+import org.apache.hadoop.mapreduce.Mapper;  
+import org.apache.hadoop.mapreduce.Reducer;  
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;  
+
+public class Text2 {  
+	public static class Map extends Mapper<Object , Text ,Text ,IntWritable>{  
+		private static Text ip=new Text();  
+		private static final IntWritable num=new IntWritable(1);  
+		public void map(Object key,Text value,Context context) throws IOException, InterruptedException{  
+			String line=value.toString();  
+			String arr[]=line.split(",");  	
+			
+			ip.set(arr[0]);  
+			context.write(ip,num);  
+		}  
+	}  
+	public static class Reduce extends Reducer< Text,IntWritable,Text, IntWritable >{  
+		private IntWritable result= new IntWritable();  
+		public void reduce(Text key,Iterable<IntWritable> values,Context context) throws IOException, InterruptedException{  
+			int sum=0;
+			for(IntWritable val:values){
+				sum=sum+val.get();		 
+			} 
+			
+			result.set(sum);
+			context.write(key,result); 
+		}  
+	}  
+	
+	
+	
+	public static class Map2 extends Mapper<Object , Text ,IntWritable,Text>{  
+		private static Text ip=new Text();  
+		private static final IntWritable num=new IntWritable();  
+		public void map(Object key,Text value,Context context) throws IOException, InterruptedException{  
+			String line=value.toString();  
+			String arr[]=line.split("\t");
+			System.out.println("****************");
+			num.set(Integer.parseInt(arr[1]));
+			
+			ip.set(arr[0]); 
+			System.out.println(arr[1]+":"+arr[0]);
+			context.write(num,ip);  
+		}  
+	}  
+	public static class Reduce2 extends Reducer< IntWritable,Text,IntWritable,Text >{   
+		int i=0;
+		public void reduce(IntWritable key,Iterable<Text> values,Context context) throws IOException, InterruptedException{  
+			
+			//System.out.println("********************");
+			for(Text val:values)
+			{
+				if(i<10)
+				{
+					i++;
+					context.write(key, val);					
+				}
+			} 
+		}  
+	}  
+	
+	//控制倒序
+	private static class IntWritableDecreasingComparator extends IntWritable.Comparator {
+
+
+
+		public int compare(WritableComparable a, WritableComparable b) {
+
+			return -super.compare(a, b);
+
+		}
+
+		public int compare(byte[] b1, int s1, int l1, byte[] b2, int s2, int l2) {
+
+			return -super.compare(b1, s1, l1, b2, s2, l2);
+
+		}
+
+	}
+	
+	public static void main(String[] args) throws IOException, ClassNotFoundException, InterruptedException{  
+		//第一步，求和
+		Job job =Job.getInstance();
+		job.setJobName("Add");
+		job.setJarByClass(Text2.class);  
+		job.setMapperClass(Map.class);  
+		job.setReducerClass(Reduce.class);  
+		job.setOutputKeyClass(Text.class);  
+		job.setOutputValueClass(IntWritable.class);  
+		//job.setInputFormatClass(TextInputFormat.class);  
+		//job.setOutputFormatClass(TextOutputFormat.class);  
+		Path in=new Path("hdfs://192.168.57.129:9000/mymapreduce/result.txt");  
+		Path out=new Path("hdfs://192.168.57.129:9000/mymapreduce/text2/in");  
+		FileInputFormat.addInputPath(job,in);  
+		FileOutputFormat.setOutputPath(job,out);  
+	
+
+		//第二步，排序
+		if(job.waitForCompletion(true)){
+			
+			Job job1 =Job.getInstance();
+			job1.setJobName("sort");
+			job1.setJarByClass(Text2.class);
+			job1.setMapperClass(Map2.class);
+			job1.setReducerClass(Reduce2.class);
+			job1.setOutputKeyClass(IntWritable.class);
+			job1.setOutputValueClass(Text.class);
+			job1.setSortComparatorClass(IntWritableDecreasingComparator.class);
+			job1.setInputFormatClass(TextInputFormat.class);  
+			job1.setOutputFormatClass(TextOutputFormat.class);  
+			Path in1=new Path("hdfs://192.168.57.129:9000/mymapreduce/text2/in/part-r-00000");  
+			Path out1=new Path("hdfs://192.168.57.129:9000/mymapreduce/text2/out");  
+			FileInputFormat.addInputPath(job1,in1);  
+			FileOutputFormat.setOutputPath(job1,out1);  
+			System.exit(job1.waitForCompletion(true) ? 0 : 1);  
+			
+			
+		}
+	}  
+}  
